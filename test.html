@@ -1,0 +1,29 @@
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+    const socket = io('http://localhost:3000');
+
+    function joinRoom() {
+        const roomId = document.getElementById('roomId').value;
+        socket.emit('joinRoom', { roomId: Number(roomId) });
+        log('joinRoom emit');
+    }
+    function sendMsg() {
+        const roomId = document.getElementById('roomId').value;
+        const text = document.getElementById('msg').value;
+        socket.emit("sendMessage", { roomId: Number(roomId), text });
+        log('sendMessage emit: ' + text);
+    }
+    socket.on('message', data => {
+        log('[' + data.sender + '] ' + data.text);
+    });
+    function log(msg) {
+        document.getElementById('chat').value += msg + '\n';
+    }
+</script>
+<input id="roomId" placeholder="roomId 입력" />
+<button onclick="joinRoom()">방 입장</button>
+<br>
+<input id="msg" placeholder="메시지 입력" />
+<button onclick="sendMsg()">보내기</button>
+<br>
+<textarea id="chat" cols="60" rows="10" readonly></textarea>
