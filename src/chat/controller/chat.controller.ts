@@ -4,7 +4,7 @@ import { RoomInfoResponseDto } from "../dto/response/room-response.dto";
 import { ChatMessageResponseDto } from "../dto/response/chat-message.dto";
 import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 
-@ApiTags('Chat') // Swagger에서 그룹핑
+@ApiTags('Chat')
 @Controller('chat')
 export class ChatController {
     constructor(private readonly chatService: ChatService) {}
@@ -53,4 +53,6 @@ export class ChatController {
             createdAt: msg.createdAt,
         }));
     }
+
+
 }

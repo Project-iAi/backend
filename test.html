@@ -1,29 +1,378 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>음성 채팅 테스트</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .chat-area {
+            height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-bottom: 10px;
+            background-color: #f9f9f9;
+        }
+        .message {
+            margin-bottom: 10px;
+            padding: 8px;
+            border-radius: 5px;
+        }
+        .user-message {
+            background-color: #e3f2fd;
+            text-align: right;
+        }
+        .ai-message {
+            background-color: #f1f8e9;
+            text-align: left;
+        }
+        .voice-message {
+            border-left: 4px solid #4caf50;
+            padding-left: 12px;
+        }
+        .processing {
+            color: #ff9800;
+            font-style: italic;
+        }
+        .error {
+            color: #f44336;
+            font-weight: bold;
+        }
+        input, button {
+            padding: 8px 12px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #2196f3;
+            color: white;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0b7dda;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .record-btn {
+            background-color: #f44336;
+            font-size: 16px;
+            padding: 15px 20px;
+        }
+        .record-btn.recording {
+            background-color: #ff9800;
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        .status {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+            display: none;
+        }
+        .status.show {
+            display: block;
+        }
+        .status.processing {
+            background-color: #fff3e0;
+            color: #ef6c00;
+        }
+        .status.error {
+            background-color: #ffebee;
+            color: #c62828;
+        }
+    </style>
+</head>
+<body>
+<h1>🎤 음성 채팅 테스트</h1>
+
+<div class="container">
+    <h3>방 입장</h3>
+    <input id="roomId" placeholder="방 번호 입력 (예: 123)" value="123" />
+    <button onclick="joinRoom()">방 입장</button>
+    <div id="roomStatus"></div>
+</div>
+
+<div class="container">
+    <h3>채팅</h3>
+    <div id="chatArea" class="chat-area"></div>
+
+    <div>
+        <input id="textMsg" placeholder="텍스트 메시지 입력" style="width: 300px;" />
+        <button onclick="sendTextMessage()">텍스트 전송</button>
+    </div>
+
+    <div style="margin-top: 10px;">
+        <button id="recordBtn" class="record-btn" onmousedown="startRecording()" onmouseup="stopRecording()">
+            🎤 길게 눌러서 음성 녹음
+        </button>
+    </div>
+
+    <div id="status" class="status">
+        <span id="statusText"></span>
+    </div>
+</div>
+
+<div class="container">
+    <h3>디버그 로그</h3>
+    <textarea id="debugLog" cols="80" rows="8" readonly></textarea>
+    <br>
+    <button onclick="clearLog()">로그 지우기</button>
+</div>
+
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <script>
     const socket = io('http://localhost:3000');
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let isRecording = false;
+    let currentRoomId = null;
 
+    // 웹소켓 이벤트 리스너들
+    socket.on('joinedRoom', (data) => {
+        currentRoomId = data.roomId;
+        document.getElementById('roomStatus').innerHTML =
+            `<span style="color: green;">✅ 방 ${data.roomId}에 입장했습니다!</span>`;
+        log(`방 ${data.roomId} 입장 완료`);
+    });
+
+    // 메시지 수신 (핵심!)
+    socket.on('message', (message) => {
+        log(`메시지 수신: ${message.sender} - ${message.type} - ${message.text}`);
+
+        // 채팅 화면에 메시지 표시
+        displayMessage(message);
+
+        // AI 음성 메시지면 자동 재생
+        if (message.sender === 'ai' && message.type === 'voice' && message.audioData) {
+            log('AI 음성 재생 시작');
+            playAudio(message.audioData);
+        }
+    });
+
+    // 처리 상태 알림
+    socket.on('processing', (data) => {
+        showStatus(data.message, 'processing');
+        log(`처리 상태: ${data.stage} - ${data.message}`);
+    });
+
+    // 세션 타임아웃
+    socket.on('sessionTimeout', (data) => {
+        showStatus('대화가 종료되었습니다. 그림일기를 만들어보세요!', 'error');
+        log(`세션 종료: ${data.message}`);
+        alert('20초 동안 응답이 없어서 대화가 종료되었습니다.\n그림일기 페이지로 이동합니다.');
+    });
+
+    // 에러 처리
+    socket.on('error', (error) => {
+        showStatus(`에러: ${error.message}`, 'error');
+        log(`에러: ${error.message}`);
+    });
+
+    // 방 입장
     function joinRoom() {
         const roomId = document.getElementById('roomId').value;
+        if (!roomId) {
+            alert('방 번호를 입력하세요!');
+            return;
+        }
         socket.emit('joinRoom', { roomId: Number(roomId) });
-        log('joinRoom emit');
+        log(`방 입장 요청: ${roomId}`);
     }
-    function sendMsg() {
-        const roomId = document.getElementById('roomId').value;
-        const text = document.getElementById('msg').value;
-        socket.emit("sendMessage", { roomId: Number(roomId), text });
-        log('sendMessage emit: ' + text);
+
+    // 텍스트 메시지 전송
+    function sendTextMessage() {
+        const text = document.getElementById('textMsg').value.trim();
+        if (!text || !currentRoomId) {
+            alert('방에 먼저 입장하고 메시지를 입력하세요!');
+            return;
+        }
+
+        socket.emit('sendMessage', {
+            roomId: currentRoomId,
+            text: text
+        });
+
+        document.getElementById('textMsg').value = '';
+        log(`텍스트 메시지 전송: ${text}`);
     }
-    socket.on('message', data => {
-        log('[' + data.sender + '] ' + data.text);
+
+    // 음성 녹음 시작
+    function startRecording() {
+        if (!currentRoomId) {
+            alert('방에 먼저 입장하세요!');
+            return;
+        }
+
+        if (isRecording) return;
+
+        navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(stream => {
+                mediaRecorder = new MediaRecorder(stream);
+                audioChunks = [];
+                isRecording = true;
+
+                // 버튼 스타일 변경
+                const btn = document.getElementById('recordBtn');
+                btn.classList.add('recording');
+                btn.textContent = '🔴 녹음 중... 놓으면 전송';
+
+                mediaRecorder.ondataavailable = (event) => {
+                    audioChunks.push(event.data);
+                };
+
+                mediaRecorder.onstop = () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                    sendVoiceMessage(audioBlob);
+
+                    // 스트림 정리
+                    stream.getTracks().forEach(track => track.stop());
+                    isRecording = false;
+
+                    // 버튼 원복
+                    btn.classList.remove('recording');
+                    btn.textContent = '🎤 길게 눌러서 음성 녹음';
+                };
+
+                mediaRecorder.start();
+                log('음성 녹음 시작');
+                showStatus('음성 녹음 중... 버튼을 놓으면 전송됩니다.', 'processing');
+            })
+            .catch(error => {
+                console.error('녹음 시작 실패:', error);
+                alert('마이크 권한을 허용해주세요!');
+                isRecording = false;
+            });
+    }
+
+    // 음성 녹음 종료
+    function stopRecording() {
+        if (mediaRecorder && isRecording) {
+            mediaRecorder.stop();
+            log('음성 녹음 종료');
+            showStatus('음성을 처리 중입니다...', 'processing');
+        }
+    }
+
+    // 음성 메시지 전송 (핵심!)
+    async function sendVoiceMessage(audioBlob) {
+        try {
+            log(`음성 파일 크기: ${audioBlob.size} bytes`);
+
+            // Blob → Base64 변환
+            const arrayBuffer = await audioBlob.arrayBuffer();
+            const audioBase64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+
+            log('Base64 변환 완료, 서버로 전송 중...');
+
+            // 웹소켓으로 전송 (이게 전부!)
+            socket.emit('sendVoiceMessage', {
+                roomId: currentRoomId,
+                audioData: audioBase64
+            });
+
+            log('음성 메시지 전송 완료');
+
+        } catch (error) {
+            console.error('음성 전송 실패:', error);
+            log(`음성 전송 에러: ${error.message}`);
+            showStatus('음성 전송에 실패했습니다.', 'error');
+        }
+    }
+
+    // 음성 재생 (중요!)
+    function playAudio(base64Audio) {
+        try {
+            const audio = new Audio(`data:audio/wav;base64,${base64Audio}`);
+
+            audio.onloadstart = () => log('음성 로딩 시작');
+            audio.oncanplay = () => log('음성 재생 가능');
+            audio.onplay = () => log('음성 재생 시작');
+            audio.onended = () => log('음성 재생 완료');
+            audio.onerror = (e) => log(`음성 재생 에러: ${e.message}`);
+
+            audio.play().catch(error => {
+                console.error('음성 재생 실패:', error);
+                log(`음성 재생 실패: ${error.message}`);
+            });
+        } catch (error) {
+            console.error('음성 재생 준비 실패:', error);
+            log(`음성 재생 준비 실패: ${error.message}`);
+        }
+    }
+
+    // 메시지를 화면에 표시
+    function displayMessage(message) {
+        const chatArea = document.getElementById('chatArea');
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${message.sender === 'user' ? 'user-message' : 'ai-message'}`;
+
+        let content = `<strong>${message.sender.toUpperCase()}:</strong> ${message.text}`;
+
+        if (message.type === 'voice') {
+            content += ' <span class="voice-message">🔊 음성</span>';
+        }
+
+        messageDiv.innerHTML = content;
+        chatArea.appendChild(messageDiv);
+        chatArea.scrollTop = chatArea.scrollHeight;
+    }
+
+    // 상태 메시지 표시
+    function showStatus(message, type = 'processing') {
+        const status = document.getElementById('status');
+        const statusText = document.getElementById('statusText');
+
+        statusText.textContent = message;
+        status.className = `status show ${type}`;
+
+        // 3초 후 자동 숨김 (에러가 아닌 경우)
+        if (type !== 'error') {
+            setTimeout(() => {
+                status.classList.remove('show');
+            }, 3000);
+        }
+    }
+
+    // 디버그 로그
+    function log(message) {
+        const timestamp = new Date().toLocaleTimeString();
+        const logArea = document.getElementById('debugLog');
+        logArea.value += `[${timestamp}] ${message}\n`;
+        logArea.scrollTop = logArea.scrollHeight;
+    }
+
+    function clearLog() {
+        document.getElementById('debugLog').value = '';
+    }
+
+    // Enter 키로 텍스트 메시지 전송
+    document.getElementById('textMsg').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            sendTextMessage();
+        }
     });
-    function log(msg) {
-        document.getElementById('chat').value += msg + '\n';
-    }
+
+    // 초기 로그
+    log('페이지 로드 완료. 방에 입장해주세요.');
 </script>
-<input id="roomId" placeholder="roomId 입력" />
-<button onclick="joinRoom()">방 입장</button>
-<br>
-<input id="msg" placeholder="메시지 입력" />
-<button onclick="sendMsg()">보내기</button>
-<br>
-<textarea id="chat" cols="60" rows="10" readonly></textarea>
+</body>
+</html>
