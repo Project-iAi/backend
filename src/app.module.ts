@@ -5,6 +5,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ChatModule } from './chat/chat.module';
 import { DiaryModule } from './diary/diary.module';
+import { CharacterModule } from './character/character.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { DiaryModule } from './diary/diary.module';
     }),
     ChatModule,
     DiaryModule,
+    CharacterModule,
   ],
   controllers: [AppController],
   providers: [AppService],

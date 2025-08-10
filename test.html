@@ -111,6 +111,77 @@
       .diary-btn:hover {
         background-color: #f57c00;
       }
+      .character-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 15px;
+        margin: 15px 0;
+      }
+      .character-card {
+        border: 2px solid #e0e0e0;
+        border-radius: 12px;
+        padding: 15px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        background: white;
+      }
+      .character-card:hover {
+        border-color: #2196f3;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      }
+      .character-card.selected {
+        border-color: #4caf50;
+        background-color: #e8f5e8;
+      }
+      .character-name {
+        font-weight: bold;
+        color: #333;
+        margin-bottom: 5px;
+      }
+      .character-category {
+        font-size: 12px;
+        color: #666;
+        background: #f5f5f5;
+        padding: 2px 8px;
+        border-radius: 10px;
+        display: inline-block;
+        margin-bottom: 8px;
+      }
+      .emotion-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 15px;
+        margin: 15px 0;
+      }
+      .emotion-card {
+        border: 2px solid #e0e0e0;
+        border-radius: 12px;
+        padding: 20px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        background: white;
+      }
+      .emotion-card:hover {
+        border-color: #2196f3;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      }
+      .emotion-card.selected {
+        border-color: #4caf50;
+        background-color: #e8f5e8;
+      }
+      .emotion-icon {
+        font-size: 48px;
+        margin-bottom: 8px;
+      }
+      .emotion-name {
+        font-weight: bold;
+        color: #333;
+        font-size: 16px;
+      }
       @keyframes pulse {
         0% {
           opacity: 1;
@@ -149,10 +220,89 @@
     <h1>🎤 음성 채팅 테스트</h1>
 
     <div class="container">
-      <h3>방 입장</h3>
+      <h3>직접 방 입장 (선택사항)</h3>
+      <p style="color: #666; font-size: 14px">
+        기존 방에 입장하거나 수동으로 방을 생성하려면 사용하세요.
+      </p>
       <input id="roomId" placeholder="방 번호 입력 (예: 123)" value="123" />
       <button onclick="joinRoom()">방 입장</button>
       <div id="roomStatus"></div>
+    </div>
+
+    <div class="container">
+      <h3>🎭 대화 친구 선택</h3>
+      <p style="color: #666; font-size: 14px">
+        대화할 친구를 선택하면 각자 다른 성격으로 대화해요!
+      </p>
+
+      <div>
+        <button onclick="loadCharacters()" style="margin-bottom: 10px">
+          캐릭터 불러오기
+        </button>
+      </div>
+
+      <div id="characterStatus" class="status">
+        <span id="characterStatusText"></span>
+      </div>
+
+      <div id="characterGrid" class="character-grid">
+        <p style="text-align: center; color: #999; grid-column: 1/-1">
+          캐릭터 불러오기 버튼을 눌러주세요!
+        </p>
+      </div>
+    </div>
+
+    <div class="container" id="emotionContainer" style="display: none">
+      <h3>😊 오늘의 기분</h3>
+      <p style="color: #666; font-size: 14px">
+        오늘 기분이 어때요? 선택하면 친구가 더 잘 이해해줄 거예요!
+      </p>
+
+      <div class="emotion-grid">
+        <div
+          class="emotion-card"
+          onclick="selectEmotion('HAPPY')"
+          data-emotion="HAPPY"
+        >
+          <div class="emotion-icon">😊</div>
+          <div class="emotion-name">기쁨</div>
+        </div>
+        <div
+          class="emotion-card"
+          onclick="selectEmotion('SAD')"
+          data-emotion="SAD"
+        >
+          <div class="emotion-icon">😢</div>
+          <div class="emotion-name">슬픔</div>
+        </div>
+        <div
+          class="emotion-card"
+          onclick="selectEmotion('ANGRY')"
+          data-emotion="ANGRY"
+        >
+          <div class="emotion-icon">😠</div>
+          <div class="emotion-name">화남</div>
+        </div>
+      </div>
+
+      <div style="margin-top: 15px">
+        <button
+          onclick="startChatWithCharacterAndEmotion()"
+          style="background-color: #4caf50; margin-right: 10px"
+        >
+          💬 대화 시작하기
+        </button>
+        <button
+          onclick="skipEmotionAndStartChat()"
+          style="background-color: #ff9800"
+        >
+          건너뛰기
+        </button>
+      </div>
+
+      <div id="emotionStatus" class="status">
+        <span id="emotionStatusText"></span>
+      </div>
     </div>
 
     <div class="container">
@@ -225,6 +375,9 @@
       let audioChunks = [];
       let isRecording = false;
       let currentRoomId = null;
+      let selectedCharacterId = null;
+      let allCharacters = [];
+      let selectedEmotion = null; // 감정 선택 변수
 
       // 웹소켓 이벤트 리스너들
       socket.on('joinedRoom', (data) => {
@@ -671,8 +824,316 @@
           }
         });
 
+      // 캐릭터 불러오기
+      async function loadCharacters() {
+        showCharacterStatus('캐릭터를 불러오는 중입니다...', 'processing');
+        log('캐릭터 목록 요청');
+
+        try {
+          const response = await fetch(`${API_BASE_URL}/characters`);
+
+          if (response.ok) {
+            allCharacters = await response.json();
+            showCharacterStatus(
+              `${allCharacters.length}개의 캐릭터를 불러왔습니다!`,
+              'success',
+            );
+            displayCharacters(allCharacters);
+            log(`캐릭터 불러오기 완료: ${allCharacters.length}개`);
+          } else {
+            const error = await response.text();
+            showCharacterStatus(`캐릭터 불러오기 실패: ${error}`, 'error');
+            log(`캐릭터 불러오기 실패: ${error}`);
+          }
+        } catch (error) {
+          showCharacterStatus(`네트워크 오류: ${error.message}`, 'error');
+          log(`캐릭터 불러오기 네트워크 오류: ${error.message}`);
+        }
+      }
+
+      // 캐릭터 표시
+      function displayCharacters(characters) {
+        const grid = document.getElementById('characterGrid');
+
+        if (characters.length === 0) {
+          grid.innerHTML =
+            '<p style="text-align: center; color: #999; grid-column: 1/-1;">캐릭터가 없습니다.</p>';
+          return;
+        }
+
+        // 카테고리별로 그룹화
+        const categories = {};
+        characters.forEach((char) => {
+          if (!categories[char.category]) {
+            categories[char.category] = [];
+          }
+          categories[char.category].push(char);
+        });
+
+        let html = '';
+
+        // 카테고리별로 표시
+        Object.keys(categories).forEach((category) => {
+          html += `<div style="grid-column: 1/-1; text-align: center; margin: 10px 0;">
+            <h4 style="color: #333; margin: 0;">${category} 🌟</h4>
+          </div>`;
+
+          categories[category].forEach((character) => {
+            html += `
+              <div class="character-card" onclick="selectCharacterCard(${character.id})" data-character-id="${character.id}">
+                <div class="character-name">${character.name}</div>
+                <div class="character-category">${character.category}</div>
+              </div>
+            `;
+          });
+        });
+
+        grid.innerHTML = html;
+      }
+
+      // 캐릭터 카드 선택
+      function selectCharacterCard(characterId) {
+        // 이전 선택 해제
+        document.querySelectorAll('.character-card').forEach((card) => {
+          card.classList.remove('selected');
+        });
+
+        // 새로운 선택
+        const selectedCard = document.querySelector(
+          `[data-character-id="${characterId}"]`,
+        );
+        if (selectedCard) {
+          selectedCard.classList.add('selected');
+          selectedCharacterId = characterId;
+
+          const character = allCharacters.find((c) => c.id === characterId);
+          if (character) {
+            showCharacterStatus(
+              `${character.name}이(가) 선택되었습니다! 이제 오늘의 기분을 선택해주세요.`,
+              'success',
+            );
+            log(`캐릭터 선택: ${character.name} (${character.category})`);
+
+            // 감정 선택 화면 표시
+            document.getElementById('emotionContainer').style.display = 'block';
+            document
+              .getElementById('emotionContainer')
+              .scrollIntoView({ behavior: 'smooth' });
+          }
+        }
+      }
+
+      // 캐릭터 선택 후 감정 선택
+      function selectEmotion(emotion) {
+        const emotionContainer = document.getElementById('emotionContainer');
+        const emotionStatus = document.getElementById('emotionStatus');
+        const emotionStatusText = document.getElementById('emotionStatusText');
+
+        // 이전 선택 해제
+        document.querySelectorAll('.emotion-card').forEach((card) => {
+          card.classList.remove('selected');
+        });
+
+        // 새로운 선택
+        const selectedCard = document.querySelector(
+          `[data-emotion="${emotion}"]`,
+        );
+        if (selectedCard) {
+          selectedCard.classList.add('selected');
+          selectedEmotion = emotion; // 감정 변수 업데이트
+          emotionStatusText.textContent = `${emotion}이(가) 선택되었습니다!`;
+          emotionStatus.className = 'status show success';
+          log(`감정 선택: ${emotion}`);
+        }
+      }
+
+      // 감정 선택 후 대화 시작
+      async function startChatWithCharacterAndEmotion() {
+        if (!selectedCharacterId) {
+          alert('먼저 캐릭터를 선택해주세요!');
+          return;
+        }
+
+        if (!selectedEmotion) {
+          alert('먼저 감정을 선택해주세요!');
+          return;
+        }
+
+        showCharacterStatus(
+          '캐릭터와 감정을 반영한 채팅방을 생성하는 중입니다...',
+          'processing',
+        );
+        log(
+          `캐릭터 ${selectedCharacterId}, 감정 ${selectedEmotion}와 함께 채팅방 생성 요청`,
+        );
+
+        try {
+          // 캐릭터와 감정을 반영한 채팅방 생성
+          const response = await fetch(`${API_BASE_URL}/chat/room`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              characterId: selectedCharacterId,
+              emotion: selectedEmotion,
+            }),
+          });
+
+          if (response.ok) {
+            const room = await response.json();
+            const character = allCharacters.find(
+              (c) => c.id === selectedCharacterId,
+            );
+
+            // 자동으로 방에 입장
+            socket.emit('joinRoom', { roomId: room.id });
+
+            showCharacterStatus(
+              `${character.name}과(와) ${selectedEmotion} 기분으로 대화방이 준비되었습니다! 🎉`,
+              'success',
+            );
+            log(
+              `채팅방 생성 및 입장 완료: 방 ${room.id}, 캐릭터 ${character.name}, 감정 ${selectedEmotion}`,
+            );
+          } else {
+            const error = await response.text();
+            showCharacterStatus(`채팅방 생성 실패: ${error}`, 'error');
+            log(`채팅방 생성 실패: ${error}`);
+          }
+        } catch (error) {
+          showCharacterStatus(`네트워크 오류: ${error.message}`, 'error');
+          log(`채팅방 생성 네트워크 오류: ${error.message}`);
+        }
+      }
+
+      // 감정 건너뛰기 후 대화 시작
+      async function skipEmotionAndStartChat() {
+        if (!selectedCharacterId) {
+          alert('먼저 캐릭터를 선택해주세요!');
+          return;
+        }
+
+        showCharacterStatus(
+          '캐릭터와 함께 채팅방을 생성하는 중입니다...',
+          'processing',
+        );
+        log(
+          `캐릭터 ${selectedCharacterId}와 함께 채팅방 생성 요청 (감정 건너뛰기)`,
+        );
+
+        try {
+          // 캐릭터와 함께 채팅방 생성
+          const response = await fetch(`${API_BASE_URL}/chat/room`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              characterId: selectedCharacterId,
+            }),
+          });
+
+          if (response.ok) {
+            const room = await response.json();
+            const character = allCharacters.find(
+              (c) => c.id === selectedCharacterId,
+            );
+
+            // 자동으로 방에 입장
+            socket.emit('joinRoom', { roomId: room.id });
+
+            showCharacterStatus(
+              `${character.name}과(와) 대화방이 준비되었습니다! 대화를 시작해보세요! 🎉`,
+              'success',
+            );
+            log(
+              `채팅방 생성 및 입장 완료: 방 ${room.id}, 캐릭터 ${character.name} (감정 건너뛰기)`,
+            );
+          } else {
+            const error = await response.text();
+            showCharacterStatus(`채팅방 생성 실패: ${error}`, 'error');
+            log(`채팅방 생성 실패: ${error}`);
+          }
+        } catch (error) {
+          showCharacterStatus(`네트워크 오류: ${error.message}`, 'error');
+          log(`채팅방 생성 네트워크 오류: ${error.message}`);
+        }
+      }
+
+      // 캐릭터 선택 완료 (기존 유지 - 개별 캐릭터 변경용)
+      async function selectCharacter() {
+        if (!selectedCharacterId) {
+          alert('먼저 캐릭터를 선택해주세요!');
+          return;
+        }
+
+        if (!currentRoomId) {
+          alert('먼저 방에 입장해주세요!');
+          return;
+        }
+
+        showCharacterStatus('캐릭터를 설정하는 중입니다...', 'processing');
+        log(
+          `캐릭터 설정 요청: 방 ${currentRoomId}, 캐릭터 ${selectedCharacterId}`,
+        );
+
+        try {
+          const response = await fetch(
+            `${API_BASE_URL}/chat/room/${currentRoomId}/character`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                characterId: selectedCharacterId,
+              }),
+            },
+          );
+
+          if (response.ok) {
+            const result = await response.json();
+            const character = allCharacters.find(
+              (c) => c.id === selectedCharacterId,
+            );
+            showCharacterStatus(
+              `${character.name}과(와) 대화를 시작합니다!`,
+              'success',
+            );
+            log(`캐릭터 설정 완료: ${character.name}`);
+          } else {
+            const error = await response.text();
+            showCharacterStatus(`캐릭터 설정 실패: ${error}`, 'error');
+            log(`캐릭터 설정 실패: ${error}`);
+          }
+        } catch (error) {
+          showCharacterStatus(`네트워크 오류: ${error.message}`, 'error');
+          log(`캐릭터 설정 네트워크 오류: ${error.message}`);
+        }
+      }
+
+      // 캐릭터 상태 메시지 표시
+      function showCharacterStatus(message, type = 'processing') {
+        const status = document.getElementById('characterStatus');
+        const statusText = document.getElementById('characterStatusText');
+
+        statusText.textContent = message;
+        status.className = `status show ${type}`;
+
+        // 5초 후 자동 숨김 (에러가 아닌 경우)
+        if (type !== 'error') {
+          setTimeout(() => {
+            status.classList.remove('show');
+          }, 5000);
+        }
+      }
+
       // 초기 로그
       log('페이지 로드 완료. 방에 입장해주세요.');
+
+      // 페이지 로드 시 캐릭터 자동 불러오기
+      loadCharacters();
     </script>
   </body>
 </html>
