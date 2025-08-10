@@ -1,11 +1,17 @@
-import { WebSocketGateway, SubscribeMessage, MessageBody, WebSocketServer, ConnectedSocket } from '@nestjs/websockets';
+import {
+  WebSocketGateway,
+  SubscribeMessage,
+  MessageBody,
+  WebSocketServer,
+  ConnectedSocket,
+} from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import {ChatService} from "./service/chat.service";
-import {ChatVoiceService} from "./service/chat-voice.service";
+import { ChatService } from './service/chat.service';
+import { ChatVoiceService } from './service/chat-voice.service';
 
 @WebSocketGateway({
   cors: { origin: '*' },
-  maxHttpBuffersize: 10e6
+  maxHttpBuffersize: 10e6,
 })
 export class ChatGateway {
   @WebSocketServer()
@@ -15,21 +21,26 @@ export class ChatGateway {
   private timers = new Map<string, NodeJS.Timeout>();
 
   constructor(
-      private readonly chatService: ChatService,
-      private readonly chatVoiceService: ChatVoiceService
+    private readonly chatService: ChatService,
+    private readonly chatVoiceService: ChatVoiceService,
   ) {}
 
   @SubscribeMessage('joinRoom')
-  async handleJoinRoom(@MessageBody() data: { roomId: number }, @ConnectedSocket() client: Socket) {
+  async handleJoinRoom(
+    @MessageBody() data: { roomId: number },
+    @ConnectedSocket() client: Socket,
+  ) {
     await client.join(String(data.roomId));
-    client.emit('joinedRoom', {roomId: data.roomId, socketId: client.id });
+    client.emit('joinedRoom', { roomId: data.roomId, socketId: client.id });
 
     this.startInactivityTimer(client, data.roomId);
   }
 
   @SubscribeMessage('sendMessage')
-  async handleSendMessage(@MessageBody() data: { roomId: number; text: string }, @ConnectedSocket() client: Socket) {
-
+  async handleSendMessage(
+    @MessageBody() data: { roomId: number; text: string },
+    @ConnectedSocket() client: Socket,
+  ) {
     try {
       this.resetInactivityTimer(client, data.roomId);
 
@@ -42,20 +53,23 @@ export class ChatGateway {
         text: data.text,
         sender: 'user',
         type: 'text',
-        timestamp: new Date()
+        timestamp: new Date(),
       });
 
       //ai 답변 저장
-      const aiText = await this.chatService.getAIResponse(data.text);
+      const aiText = await this.chatService.getAIResponse(
+        data.text,
+        data.roomId,
+      );
       await this.chatService.saveMessage(data.roomId, 'ai', aiText);
 
       //text 전송
       this.server.to(String(data.roomId)).emit('message', {
-        id: Date.now() +1,
+        id: Date.now() + 1,
         text: aiText,
         sender: 'ai',
         type: 'text',
-        timestamp: new Date()
+        timestamp: new Date(),
       });
 
       //ai응답 tts로
@@ -68,7 +82,7 @@ export class ChatGateway {
         audioData: audioBase64,
         sender: 'ai',
         type: 'voice',
-        timestamp: new Date()
+        timestamp: new Date(),
       });
 
       this.startInactivityTimer(client, data.roomId);
@@ -76,14 +90,17 @@ export class ChatGateway {
       console.error('메시지 처리 에러:', error);
       client.emit('error', {
         message: '메시지 처리 중 오류가 발생했습니다.',
-        error: error.message
+        error: error.message,
       });
     }
   }
 
   //음성 메시지 처리
   @SubscribeMessage('sendVoiceMessage')
-  async handleVoiceMessage(@MessageBody() data: { roomId: number; audioData: string }, @ConnectedSocket() client: Socket) {
+  async handleVoiceMessage(
+    @MessageBody() data: { roomId: number; audioData: string },
+    @ConnectedSocket() client: Socket,
+  ) {
     try {
       // 타이머 리셋
       this.resetInactivityTimer(client, data.roomId);
@@ -94,14 +111,17 @@ export class ChatGateway {
       // STT 처리 중 알림
       client.emit('processing', {
         stage: 'stt',
-        message: '음성을 인식하고 있어요...'
+        message: '음성을 인식하고 있어요...',
       });
 
       // STT: 음성 → 텍스트
-      const recognizedText = await this.chatVoiceService.speechToText(audioBuffer);
+      const recognizedText =
+        await this.chatVoiceService.speechToText(audioBuffer);
 
       if (!recognizedText.trim()) {
-        client.emit('error', { message: '음성을 인식할 수 없어요. 다시 말해주세요!' });
+        client.emit('error', {
+          message: '음성을 인식할 수 없어요. 다시 말해주세요!',
+        });
         this.startInactivityTimer(client, data.roomId);
         return;
       }
@@ -115,17 +135,20 @@ export class ChatGateway {
         audioData: data.audioData, // 원본 음성도 함께
         sender: 'user',
         type: 'voice',
-        timestamp: new Date()
+        timestamp: new Date(),
       });
 
       // AI 응답 생성 중 알림
       client.emit('processing', {
         stage: 'ai',
-        message: '답변을 생각하고 있어요...'
+        message: '답변을 생각하고 있어요...',
       });
 
       // AI 답변 생성
-      const aiText = await this.chatService.getAIResponse(recognizedText);
+      const aiText = await this.chatService.getAIResponse(
+        recognizedText,
+        data.roomId,
+      );
       await this.chatService.saveMessage(data.roomId, 'ai', aiText);
 
       // AI 텍스트 먼저 전송
@@ -134,13 +157,13 @@ export class ChatGateway {
         text: aiText,
         sender: 'ai',
         type: 'text',
-        timestamp: new Date()
+        timestamp: new Date(),
       });
 
       // TTS 처리 중 알림
       client.emit('processing', {
         stage: 'tts',
-        message: '음성으로 만들고 있어요...'
+        message: '음성으로 만들고 있어요...',
       });
 
       // TTS: AI 텍스트 → 음성
@@ -153,23 +176,22 @@ export class ChatGateway {
         audioData: aiAudioBase64,
         sender: 'ai',
         type: 'voice',
-        timestamp: new Date()
+        timestamp: new Date(),
       });
 
       // 처리 완료 알림
       client.emit('processing', {
         stage: 'complete',
-        message: '완료!'
+        message: '완료!',
       });
 
       // 새 타이머 시작
       this.startInactivityTimer(client, data.roomId);
-
     } catch (error) {
       console.error('음성 메시지 처리 에러:', error);
       client.emit('error', {
         message: '음성 처리 중 오류가 발생했습니다.',
-        error: error.message
+        error: error.message,
       });
 
       // 에러 시에도 타이머 재시작
@@ -190,8 +212,9 @@ export class ChatGateway {
     const timer = setTimeout(() => {
       this.server.to(String(roomId)).emit('sessionTimeout', {
         roomId,
-        message: '오늘 이야기한 걸 그림으로 남겨볼까? 내가 너랑 나눈 이야기를 바탕으로 그림을 그려줄게!',
-        timestamp: new Date()
+        message:
+          '오늘 이야기한 걸 그림으로 남겨볼까? 내가 너랑 나눈 이야기를 바탕으로 그림을 그려줄게!',
+        timestamp: new Date(),
       });
 
       // 타이머 정리
@@ -219,7 +242,7 @@ export class ChatGateway {
       }
     });
 
-    timersToDelete.forEach(timerId => {
+    timersToDelete.forEach((timerId) => {
       this.timers.delete(timerId);
     });
   }
