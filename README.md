@@ -24,15 +24,49 @@
 
 ## Description
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+IAI (AI Interactive) - AI 캐릭터와 대화할 수 있는 NestJS 기반의 백엔드 서버입니다.
 
-## Project setup
+## 주요 기능
+
+- 🤖 AI 캐릭터와의 실시간 채팅
+- 👤 카카오 소셜 로그인
+- 📝 일기 작성 및 분석
+- 🎨 다양한 캐릭터 선택
+- 🔊 음성 채팅 지원
+- 📊 부모 리포트 기능
+
+## 기술 스택
+
+- **Backend**: NestJS, TypeScript
+- **Database**: MySQL 8.0
+- **Authentication**: JWT, Passport
+- **AI**: OpenAI API
+- **WebSocket**: Socket.IO
+- **Infrastructure**: Docker, Nginx
+
+## 로컬 개발 환경 설정
+
+### 1. 의존성 설치
 
 ```bash
 $ yarn install
 ```
 
-## Compile and run the project
+### 2. 환경변수 설정
+
+```bash
+# env.example을 참고하여 .env 파일 생성
+$ cp env.example .env
+# .env 파일에서 필요한 값들을 설정해주세요
+```
+
+### 3. 데이터베이스 실행
+
+```bash
+$ docker-compose up -d db
+```
+
+### 4. 서버 실행
 
 ```bash
 # development
@@ -45,7 +79,101 @@ $ yarn run start:dev
 $ yarn run start:prod
 ```
 
-## Run tests
+## Docker를 이용한 배포 (EC2 + 도메인)
+
+### 1. 환경변수 설정
+
+```bash
+# env.example을 참고하여 .env 파일 생성
+$ cp env.example .env
+# .env 파일에서 필요한 값들을 설정해주세요
+```
+
+### 2. 도메인 설정 확인
+
+- **도메인**: iailog.store
+- **DNS 레코드**:
+  - A 레코드: iailog.store → EC2 IP
+  - CNAME 레코드: www.iailog.store → iailog.store
+
+### 3. 배포 옵션
+
+#### 3-1. HTTP만 배포 (빠른 테스트)
+
+```bash
+$ ./deploy.sh
+```
+
+#### 3-2. HTTPS 포함 배포 (프로덕션 권장)
+
+```bash
+$ ./deploy.sh --ssl
+```
+
+#### 3-3. 수동 SSL 설정
+
+```bash
+# 기본 서비스 먼저 시작
+$ docker-compose up -d backend db nginx
+
+# SSL 인증서 설정
+$ ./scripts/ssl-setup.sh
+
+# 자동 갱신 설정
+$ ./scripts/setup-cron.sh
+```
+
+### 4. 보안 설정
+
+#### SSH 보안 강화
+
+```bash
+$ ./scripts/ssh-security.sh
+```
+
+#### 방화벽 설정
+
+```bash
+# Ubuntu/Debian
+$ sudo ufw enable
+$ sudo ufw allow 22/tcp   # SSH
+$ sudo ufw allow 80/tcp   # HTTP
+$ sudo ufw allow 443/tcp  # HTTPS
+```
+
+## 서비스 접속
+
+- **도메인**: https://iailog.store
+- **API 문서**: https://iailog.store/api-docs
+- **헬스체크**: https://iailog.store/health
+
+## 유지보수
+
+### SSL 인증서 관리
+
+```bash
+# 수동 갱신
+$ ./scripts/ssl-renew.sh
+
+# 갱신 상태 확인
+$ docker-compose exec certbot certbot certificates
+```
+
+### 로그 모니터링
+
+```bash
+# 전체 로그
+$ docker-compose logs -f
+
+# 특정 서비스 로그
+$ docker-compose logs -f nginx
+$ docker-compose logs -f backend
+
+# SSL 갱신 로그
+$ tail -f /var/log/ssl-renew.log
+```
+
+## 테스트 실행
 
 ```bash
 # unit tests
@@ -56,6 +184,18 @@ $ yarn run test:e2e
 
 # test coverage
 $ yarn run test:cov
+```
+
+## 프로젝트 구조
+
+```
+src/
+├── auth/          # 인증 관련
+├── character/     # 캐릭터 관리
+├── chat/          # 채팅 기능
+├── common/        # 공통 모듈
+├── diary/         # 일기 기능
+└── users/         # 사용자 관리
 ```
 
 ## Resources
