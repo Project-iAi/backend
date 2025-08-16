@@ -2,6 +2,7 @@ import { Controller, Get, Param, Post } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { DiaryService } from '../service/diary.service';
 import { DiaryResponseDto } from '../dto/response/diary.dto';
+import { ParentReportDto } from '../dto/response/parent-report.dto';
 
 @ApiTags('Diary')
 @Controller('diary')
@@ -88,5 +89,30 @@ export class DiaryController {
       imageUrl: diary.imageUrl,
       createdAt: diary.createdAt,
     }));
+  }
+
+  @ApiOperation({
+    summary: '부모 리포트 조회',
+    description:
+      '특정 채팅방의 부모 리포트를 조회합니다. 아이의 대화 상태와 발달 상황을 분석한 리포트입니다.',
+  })
+  @ApiParam({ name: 'roomId', type: Number, description: '채팅방 ID' })
+  @ApiResponse({
+    status: 200,
+    description: '부모 리포트 조회 성공',
+    type: ParentReportDto,
+  })
+  @Get('room/:roomId/parent-report')
+  async getParentReport(
+    @Param('roomId') roomId: string,
+  ): Promise<ParentReportDto | null> {
+    const roomIdNum = parseInt(roomId, 10);
+    const report = await this.diaryService.getParentReport(roomIdNum);
+
+    if (!report) {
+      return null;
+    }
+
+    return report;
   }
 }
