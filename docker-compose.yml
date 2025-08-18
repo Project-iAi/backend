@@ -66,6 +66,7 @@ services:
       - nginx_cache:/var/cache/nginx
       - certbot_webroot:/var/www/certbot:ro
       - certbot_certs:/etc/letsencrypt:ro
+      - ./public:/var/www/iai/public:ro
     depends_on:
       - backend
     networks:
